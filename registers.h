@@ -1,10 +1,11 @@
-#include <cassert>
+#pragma once
+
 #include <cstdint>
 
 #define IMPLEMENT_REGISTER_16_GET(FIELD, START, END) \
     static_assert(START >= 0 && START < 16);\
     static_assert(END >= 0 && END < 16 && END >= START);\
-    uint16_t get_##FIELD() {\
+    inline uint16_t get_##FIELD() const {\
         uint16_t buffer = register_raw >> START;\
         return buffer & (0xFFFF >> (15 - (END - START)));\
     }
@@ -12,7 +13,7 @@
 #define IMPLEMENT_REGISTER_16_SET(FIELD, START, END) \
     static_assert(START >= 0 && START < 16);\
     static_assert(END >= 0 && END < 16 && END >= START);\
-    bool set_##FIELD(uint16_t value) {\
+    inline bool set_##FIELD(uint16_t value) {\
         if (value >= (1 << (END - START + 1))) {\
             return false;\
         }\
@@ -26,7 +27,7 @@
 #define IMPLEMENT_REGISTER_32_GET(FIELD, START, END) \
     static_assert(START >= 0 && START < 32);\
     static_assert(END >= 0 && END < 32 && END >= START);\
-    uint16_t get_##FIELD() {\
+    inline uint16_t get_##FIELD() const {\
         uint16_t buffer = register_raw >> START;\
         return buffer & (0xFFFF'FFFF >> (31 - (END - START)));\
     }
@@ -34,7 +35,7 @@
 #define IMPLEMENT_REGISTER_32_SET(FIELD, START, END) \
     static_assert(START >= 0 && START < 32);\
     static_assert(END >= 0 && END < 32 && END >= START);\
-    bool set_##FIELD(uint32_t value) {\
+    inline bool set_##FIELD(uint32_t value) {\
         if (value >= (1 << (END - START + 1))) {\
             return false;\
         }\
@@ -82,3 +83,4 @@
         private:\
             uint32_t register_raw = 0x0;\
     };
+
