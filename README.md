@@ -1,16 +1,24 @@
 # Jacob's Register Helper
 
-[Documentation](DOCS.md) on how to use this solution is available in DOCS.md. This README will cover the  current solutions, their problems, the need for a better solution, and cover how my solution fixes most of these weaknesses.
+[Documentation](DOCS.md) on how to use this solution is available in DOCS.md. This README will cover the  current solutions, their problems, the need for a better solution, and cover how my solution fixes most of these weaknesses. A compilable example can be found in the example folder [here](example/main.cpp). Build the example with the following:
+
+```bash
+cd ./example
+mkdir build
+cd ./build
+cmake ..
+make
+```
 
 ## Contents
 <!--ts-->
-  * [1 Description](#description)
-  * [2 Use Case](#use-case)
-  * [3 Method 1 Bit Shifting and Masking](#method-1-bit-shifting-and-masking)
-  * [4 Method 2 Bit Fields](#method-2-bit-fields)
-  * [5 My Solution](#my-solution)
-  * [6 Weaknesses](#weaknesses)
-  * [7 Planned Future Work](#planned-future-work)
+  * [Description](#description)
+  * [Use Case](#use-case)
+  * [Method 1 Bit Shifting and Masking](#method-1-bit-shifting-and-masking)
+  * [Method 2 Bit Fields](#method-2-bit-fields)
+  * [My Solution](#my-solution)
+  * [Weaknesses](#weaknesses)
+  * [Planned Future Work](#planned-future-work)
 <!--te-->
 
 ## Description

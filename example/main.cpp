@@ -17,6 +17,7 @@ DECLARE_REGISTER_32(
   port_number, 24, 31
 );
 
+// WIP, IMPLEMENTATION NOT COMPLETE
 DECLARE_REGISTER_16_WITH_PERMS(
     link_control_register,
     aspm_control, 0, 1, REGISTER_PERMS::READ_WRITE,
