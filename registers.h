@@ -46,7 +46,7 @@
         return true;\
     }
 
-// MAGICAL FOR_EACH MACRO from https://www.scs.stanford.edu/~dm/blog/va-opt.html
+// Absolutely magical FOR_EACH MACRO inspired by https://www.scs.stanford.edu/~dm/blog/va-opt.html
 #define PARENS ()
 
 #define EXPAND(...) EXPAND3(EXPAND3(__VA_ARGS__))
@@ -54,11 +54,11 @@
 #define EXPAND2(...) EXPAND1(EXPAND1(EXPAND1(EXPAND1(__VA_ARGS__))))
 #define EXPAND1(...) __VA_ARGS__
 
-#define FOR_EACH(macro, ...)                                    \
-  __VA_OPT__(EXPAND(FOR_EACH_HELPER(macro, __VA_ARGS__)))
-#define FOR_EACH_HELPER(macro, FIELD, START, END, ...)                         \
-  macro(FIELD, START, END)                                                     \
-  __VA_OPT__(FOR_EACH_AGAIN PARENS (macro, __VA_ARGS__))
+#define FOR_EACH(macro, ...) \
+    __VA_OPT__(EXPAND(FOR_EACH_HELPER(macro, __VA_ARGS__)))
+#define FOR_EACH_HELPER(macro, FIELD, START, END, ...) \
+    macro(FIELD, START, END) \
+    __VA_OPT__(FOR_EACH_AGAIN PARENS (macro, __VA_ARGS__))
 #define FOR_EACH_AGAIN() FOR_EACH_HELPER
 
 #define DECLARE_REGISTER_16(NAME, ...) \
@@ -71,7 +71,7 @@
             void clear_register_value() { register_raw = 0x0; };\
         private:\
             uint16_t register_raw = 0x0;\
-    };\
+    };
 
 #define DECLARE_REGISTER_32(NAME, ...) \
     class NAME {\
