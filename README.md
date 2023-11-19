@@ -1,9 +1,20 @@
 # Jacob's Register Helper
 
-## Why?
-As a systems software engineer, I am often working with registers. These registers might have different fields within them, often on a sub-byte width. This makes accessing different bits or lengths of bits somewhat obtuse I think. There are a couple of methods you could use to approach this issue. Let's talk about each potential method, and then we will go over this implementation and its advantages.
+## Contents
+<!--ts-->
+  * [1 Description](#description)
+  * [2 Use Case](#use-case)
+  * [3 Method 1 Bit Shifting and Masking](#method-1-bit-shifting-and-masking)
+  * [4 Method 2 Bit Fields](#method-2-bit-fields)
+  * [5 My Solution](#my-solution)
+  * [6 Weaknesses](#weaknesses)
+  * [7 Planned Future Work](#planned-future-work)
+<!--te-->
 
-### Example Setup
+## Description
+As a systems software engineer, I am often working with registers. These registers might have different fields within them, often on a sub-byte width. This makes accessing different bits or lengths of bits somewhat obtuse I think. There are a couple of methods you could use to approach this issue normally, all of which I think are inadequate, so I created my own. It features standard defined behaviour, memory safety, named access to every bit field, access permissions, and more. In this document I will first talk about the normal potential methods. Then I will go over their shortcommings, and finally I will introduce my method, how it works, and how to use it. At the end I will briefly discuss small weaknesses I see in my solution along with future improvements I intend on pursuing.
+
+## Use Case
 Let's say we are working with a PCIe driver, and we need to control PCIe registers. For this example we will work with the Link Capabilities Register, the definition of which can be found in the **PCI Express Base r3.0** specification in **Section 7.8.6**. The register definition is as follows:
 
 | Bit Location | Description |
@@ -32,14 +43,15 @@ The encoding for those bits is:
 | 10b | L1 Supported |
 | 11b | L0s and L1 Supported |
 
-Let's imagine that you already have some method called `uint32_t read_register(uint32_t offset)` which reads a register in from DRAM or MMIO or something, along with another method `void write_register(uint32_t offset, uint32_t value);` for writing a value to a register.
+Let's imagine that you already have some method called `uint32_t read_register(uint32_t offset)` which reads a register in from DRAM or MMIO or something, along with another method `void write_register(uint32_t offset, uint32_t value)` for writing a value to a register.
 
 Let's also imagine that the link capabilites register is currently `0xdeadbeef`.
 
 The bit representation of `0xdeadbeef` can be seen below. This shows that the bits 11:10 are `3` or `0b11`.
+
 ![image](https://github.com/regerj/jacobs_register_helper/assets/71850611/b11440f5-59f6-409e-8c05-6b65fc58620c)
 
-### Method 1: Bit Shifting and Masking
+## Method 1: Bit Shifting and Masking
 Our first, and most often used method, is with bit shifting and masking to retrieve only a certain chunk of bits from within a register. Our C++ code for such a method might look something like this:
 
 ```cpp
@@ -68,11 +80,17 @@ aspm_support = (link_capabilites_reg >> ASPM_SUPPORT_START) | ASPM_SUPPORT_WIDTH
 ```
 
 Adding this to the approach mitigates the need for looking up the magic numbers each time, but it introduces it's own set of problems.
-1. Potential name conflicts. For example, some bit fields have extremely common names like `LINK_WIDTH` which would collide. You could mitigate this with more verbose names, but that can't be the best solution...
+
+### Pros
+1. Standard defined behaviour.
+
+### Cons
+1. Potential name conflicts. For example, some bit fields have extremely common names like `link_width` which would collide. You could mitigate this with more verbose names, but that can't be the best solution...
 2. Misuse of these constants for different registers. The constant definition file which contains all of these magic numbers will likely contain the constants for a number of different registers, possibly dozens or hundreds. There is nothing preventing you from unintentionally using a constant meant for, say, the Device Status register on a Link Capabilites register, which could cause disasterous effects.
 3. No code insights into the contents of the register. This approach still requires you to reference the documentation every time you go to access a member of a register, in order to know what fields are present, and infer from that the names of the constants you would need to use. This could potentially be mitigated by organizing your constant defines such that they are grouped by the register which owns them, which could be described in a comment above the constants. This would mean you no longer have to reference the documentation, but you would have to find the register in the constant header file. There has got to be a more robust solution...
 
 You could provide MACROs to simplify the access to certain fields, perhaps it might look something like this:
+
 ```cpp
 // pcie_registers.h
 
@@ -91,7 +109,7 @@ aspm_support = GET_ASPM_SUPPORT(link_capabilites_reg);
 
 This makes the code look a bit cleaner, but it fails to mitigate the major issues discussed above, it simply moves them or changes in what way they come up.
 
-### Bit Fields
+## Method 2: Bit Fields
 Another possible method that fixes many of these problems is using bitfields within a struct. This allows you to assign names to bit length defined fields. Your registers could then be defined as follows:
 
 ```cpp
@@ -113,9 +131,10 @@ struct link_capabilities_register {
 };
 ```
 
-This, at face value, seems to be a GREAT solution. We now have named bit fields within a struct, which allows us to instantiate an object of a static type `link_capabilites_reg` and we have insight into the fields of this register through LSP autocompletion. This solution comes with a different set of problems though. There is no way to actually access the underlying complete register in order to populate it from a `read_register()` call which would likely return a `uint32_t` or send it to a `write_register()` call which would expect a `uint32_t`.
+This, at face value, seems to be a **_great_** solution. We now have named bit fields within a struct, which allows us to instantiate an object of a static type `link_capabilites_reg` and we have insight into the fields of this register through LSP autocompletion. This solution comes with a different set of problems though. Most immediately is there is no way to nicely retrieve the actual full register value again, which you would need for writing the register back. You would need to turn your object back into a `uint32_t` for the write call. This is not possible with this method without some sketchy and probably very undefined pointer casting. There is no way to actually access the underlying complete register in order to populate it from a `read_register()` call which would likely return a `uint32_t` or send it to a `write_register()` call which would expect a `uint32_t`.
 
-We could alleviate problem 2 by wrapping this struct in a union. That implementation might look something like this:
+We could alleviate this problem by wrapping this struct in a union. That implementation might look something like this:
+
 ```cpp
 // pcie_registers.h
 
@@ -149,9 +168,13 @@ aspm_support = link_capabilites_reg.data.aspm_support;
 
 You would then be able to access the raw register value using `link_capabilites_reg.raw`, but this still is riddled with issues.
 
+### Pros
+1. Named access to fields.
+2. LSP insight into register contents (less going to the documentation).
+
+### Cons
 1. Reserved bits must be declared in the bitfield, otherwise locations may become messed up. This means that it is possible for someone to write to those reserved bits unintentionally, without violating the access pattern.
-2. There is no way to nicely retrieve the actual full register value again, which you would need for writing the register back. You would need to turn your object back into a `uint32_t` for the write call. This is not possible with this method without some sketchy and probably very undefined pointer casting.
-3. This approach is FULL of implementation defined behaviour. The C++ standard makes few gurantees about the functioning of bitfields within a struct, which leaves it up to the implementation. This is because the C++ standard views bitfields as a way of compacting data, decidedly not as a method of defining registers. This creates unportable and fragile code. This method is advised against very strongly.
+2. This approach is FULL of implementation defined behaviour. The C++ standard makes few gurantees about the functioning of bitfields within a struct, which leaves it up to the implementation. This is because the C++ standard views bitfields as a way of compacting data, decidedly not as a method of defining registers. This creates unportable and fragile code. This method is advised against very strongly.
 
 ## My Solution
 My solution involves some MACRO based metaprogramming. Essentially, it provides a set of MACROs for creating register definitions of varying widths. An implementation of the above problem using my header might look something like this:
@@ -193,7 +216,7 @@ This would allow these register definitions to be used anywhere in the code so l
 The `DEFINE_REGISTER_XX` macro first instantiates a class of the same name as is provided to the macro. Within this class, it recursively iterates through each set of `(FIELD, START, END)`, and creates two methods for each. It creates a getter and a setter. They follow the naming conventions of `get_ + FIELD()` and `set_ + FIELD()`. These methods use bit operations to retreive the requested field from an internal private `uint32_t` which represents the register's actual value. The declaration of these methods look like the following (assuming 32 bit MACRO):
 
 ```cpp
-uint32_t get_some_field_name();
+uint32_t get_some_field_name() const;
 bool set_some_field_name(uint32_t value);
 ```
 
@@ -202,7 +225,7 @@ Here, the returned `bool` from the `set` method represents whether that set was 
 The class also contains three more methods for interacting with the register as a whole. These are:
 
 ```cpp
-uint32_t get_register_value();
+uint32_t get_register_value() const;
 void clear_register_value();
 void set_register_value(uint32_t value);
 ```
@@ -211,7 +234,7 @@ These methods are the same accross all register definitions, as they are for int
 
 So how does this fix our problems?
 
-It combines the strengths of both of the previously mentioned methods, while eliminating their pitfalls. It leverages the implementation independent behaviour of the first method of bitshifting and masking for the accesses, while maintaining the strictly defined and descriptively named accessible fields from the second method using bitfields. This is LSP autocomplete compatible because the methods are defined in the class which has been instantiated. This also has an added benefit of allowing reserved bits to be entirely inaccessible because no get or set method is generated for them if you just omit them from your arg list in the MACRO call.
+It combines the strengths of both of the previously mentioned methods, while eliminating their pitfalls. It leverages the implementation agnostic behaviour of the first method of bitshifting and masking for the accesses, while maintaining the strictly defined and descriptively named accessible fields from the second method using bitfields. This is LSP autocomplete compatible because the methods are defined in the class which has been instantiated. This also has an added benefit of allowing reserved bits to be entirely inaccessible because no get or set method is generated for them if you just omit them from your arg list in the MACRO call.
 
 Like the second method, it also prevents naming conflict for fields with common names like `port_width` because it is all within a class scope.
 
@@ -228,5 +251,4 @@ Static asserts are present to prevent instantiation of a register with accesses 
 ## Planned Future Work
 
 - Add 8 bit and 64 bit register width support
-- Add priveledge defined versions which can give each field different R/W priveledges
 - Port to Rust (or at least try) 🦞
