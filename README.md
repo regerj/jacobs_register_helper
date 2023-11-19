@@ -1,5 +1,7 @@
 # Jacob's Register Helper
 
+[Documentation](DOCS.md) on how to use this solution is available in DOCS.md. This README will cover the  current solutions, their problems, the need for a better solution, and cover how my solution fixes most of these weaknesses.
+
 ## Contents
 <!--ts-->
   * [1 Description](#description)
