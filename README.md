@@ -3,7 +3,7 @@
 ## Why?
 As a systems software engineer, I am often working with registers. These registers might have different fields within them, often on a sub-byte width. This makes accessing different bits or lengths of bits somewhat obtuse I think. There are a couple of methods you could use to approach this issue. Let's talk about each potential method, and then we will go over this implementation and its advantages.
 
-### Situation
+### Example Setup
 Let's say we are working with a PCIe driver, and we need to control PCIe registers. For this example we will work with the Link Capabilities Register, the definition of which can be found in the **PCI Express Base r3.0** specification in **Section 7.8.6**. The register definition is as follows:
 
 | Bit Location | Description |
@@ -32,7 +32,7 @@ The encoding for those bits is:
 | 10b | L1 Supported |
 | 11b | L0s and L1 Supported |
 
-Let's imagine that you already have some method called `read_register(uint32_t offset)` which reads a register in from DRAM or MMIO or something.
+Let's imagine that you already have some method called `uint32_t read_register(uint32_t offset)` which reads a register in from DRAM or MMIO or something, along with another method `void write_register(uint32_t offset, uint32_t value);` for writing a value to a register.
 
 Let's also imagine that the link capabilites register is currently `0xdeadbeef`.
 
@@ -74,7 +74,8 @@ Adding this to the approach mitigates the need for looking up the magic numbers 
 
 You could provide MACROs to simplify the access to certain fields, perhaps it might look something like this:
 ```cpp
-// Some constant definitions header
+// pcie_registers.h
+
 #define ASPM_SUPPORT_START 10
 #define ASPM_SUPPORT_WIDTH 0b11
 
@@ -94,7 +95,7 @@ This makes the code look a bit cleaner, but it fails to mitigate the major issue
 Another possible method that fixes many of these problems is using bitfields within a struct. This allows you to assign names to bit length defined fields. Your registers could then be defined as follows:
 
 ```cpp
-// Some register.h file
+// pcie_registers.h
 
 struct link_capabilities_register {
   uint32_t max_link_speed : 4;
@@ -110,25 +111,14 @@ struct link_capabilities_register {
   uint32_t reserved : 1;
   uint32_t port_number : 8;
 };
-
-// main.cpp
-// Read the register from memory
-link_capabilites_register link_capabilites_reg = read_register(0x0C);
-uint32_t aspm_support = 0x0;
-
-aspm_support = link_capabilites_reg.aspm_support;
-
 ```
 
-This, at face value, seems to be a GREAT solution. We now have named bit fields within a struct, which allows us to instantiate an object of a static type `link_capabilites_reg` and we have insight into the fields of this register through LSP autocompletion. This solution comes with a different set of problems though:
+This, at face value, seems to be a GREAT solution. We now have named bit fields within a struct, which allows us to instantiate an object of a static type `link_capabilites_reg` and we have insight into the fields of this register through LSP autocompletion. This solution comes with a different set of problems though. There is no way to actually access the underlying complete register in order to populate it from a `read_register()` call which would likely return a `uint32_t` or send it to a `write_register()` call which would expect a `uint32_t`.
 
-1. Reserved bits must be declared in the bitfield, otherwise locations may become messed up. This means that it is possible for someone to write to those reserved bits unintentionally, without violating the access pattern.
-2. There is no way to nicely retrieve the actual full register value again, which you would need for writing the register back. The method for doing so would probably look something like `void write_register(uint32_t offset, uint32_t value)`. You would need to turn your object back into a `uint32_t` for the write call. This is not possible with this method without some sketchy and probably very undefined pointer casting.
-3. This approach is FULL of implementation defined behaviour. The C++ standard makes few gurantees about the functioning of bitfields within a struct, which leaves it up to the implementation. This creates unportable and fragile code. This method is advised against very strongly.
-
-For the sake of completeness, we could alleviate problem 2 by wrapping this struct in a union. That implementation might look something like this:
+We could alleviate problem 2 by wrapping this struct in a union. That implementation might look something like this:
 ```cpp
-// Some register.h file
+// pcie_registers.h
+
 union link_capabilites_register {
   uint32_t raw;
   struct link_capabilities_register {
@@ -149,20 +139,25 @@ union link_capabilites_register {
 
 // main.cpp
 // Read the register from memory
-link_capabilites_register link_capabilites_reg = read_register(0x0C);
+link_capabilites_register link_capabilites_reg{};
+link_capabilites_reg.raw = read_register(0x0C);
 uint32_t aspm_support = 0x0;
 
 aspm_support = link_capabilites_reg.data.aspm_support;
 
 ```
 
-You would then be able to access the raw register value using `link_capabilites_reg.raw`, but again this leaves the much bigger issues remaining, so is still not advisable.
+You would then be able to access the raw register value using `link_capabilites_reg.raw`, but this still is riddled with issues.
+
+1. Reserved bits must be declared in the bitfield, otherwise locations may become messed up. This means that it is possible for someone to write to those reserved bits unintentionally, without violating the access pattern.
+2. There is no way to nicely retrieve the actual full register value again, which you would need for writing the register back. You would need to turn your object back into a `uint32_t` for the write call. This is not possible with this method without some sketchy and probably very undefined pointer casting.
+3. This approach is FULL of implementation defined behaviour. The C++ standard makes few gurantees about the functioning of bitfields within a struct, which leaves it up to the implementation. This is because the C++ standard views bitfields as a way of compacting data, decidedly not as a method of defining registers. This creates unportable and fragile code. This method is advised against very strongly.
 
 ## My Solution
 My solution involves some MACRO based metaprogramming. Essentially, it provides a set of MACROs for creating register definitions of varying widths. An implementation of the above problem using my header might look something like this:
 
 ```cpp
-// Some register definition file (lets call it "pcie_registers.h"
+// pcie_registers.h
 #include "registers.h" // My implementation file (to be renamed)
 
 DECLARE_REGISTER_32(
@@ -185,9 +180,7 @@ DECLARE_REGISTER_32(
 
 int main() {
   link_capabilites_register reg;
-  reg.set_regist
-
-er_value(read_register(0x0C));
+  reg.set_register_value(read_register(0x0C));
   uint32_t aspm_support = 0x0;
   aspm_support = reg.get_aspm_support();
 }
@@ -195,10 +188,45 @@ er_value(read_register(0x0C));
 
 The setup here is that you would have some header file containing repeated calls to my provided MACROs to define the structure of all the registers you might read/write in your code. The arg list looks like `(NAME, FIELD, START, END, FIELD, START, END, ...)`. You provide a name for your register type as the first argument, and you follow it by a series of `(FIELD, START, END)` where `FIELD` represents the name of the field, `START` represents the beginnig bit, and `END` represents the ending bit (inclusive). This allows for readable, easy to create register definitions that clearly state the start and end bits of the field for self documenting code.
 
+This would allow these register definitions to be used anywhere in the code so long as that file `#include`s your register definitions file. So lets see how it works, and how it fixes the problems of the previous two approaches.
 
+The `DEFINE_REGISTER_XX` macro first instantiates a class of the same name as is provided to the macro. Within this class, it recursively iterates through each set of `(FIELD, START, END)`, and creates two methods for each. It creates a getter and a setter. They follow the naming conventions of `get_ + FIELD()` and `set_ + FIELD()`. These methods use bit operations to retreive the requested field from an internal private `uint32_t` which represents the register's actual value. The declaration of these methods look like the following (assuming 32 bit MACRO):
 
+```cpp
+uint32_t get_some_field_name();
+bool set_some_field_name(uint32_t value);
+```
 
-dssjkkjkjdskfjlskdsfs
+Here, the returned `bool` from the `set` method represents whether that set was successful or not. The situation where a failure might occur is when the caller attempts to assign a value that is too large for that bit field. For example, we could not assign `12` to a bitfield that is 3 bits wide, that would be an overflow. I considered preventing this using asserts instead of a success/fail return value, but I figured I would avoid any kind of runtime exceptions for portability and ease of use.
 
+The class also contains three more methods for interacting with the register as a whole. These are:
 
-Memory safe, C++ standard compliant, register object creator with named access methods.
+```cpp
+uint32_t get_register_value();
+void clear_register_value();
+void set_register_value(uint32_t value);
+```
+
+These methods are the same accross all register definitions, as they are for interacting with the entire register. This may be important when you want to reuse a register object for another read, you might want to clear it. When reading it in from memory, you will want to set it. Finally, when passing it to a theoretical `write_register()` method, you might want to get the raw value.
+
+So how does this fix our problems?
+
+It combines the strengths of both of the previously mentioned methods, while eliminating their pitfalls. It leverages the implementation independent behaviour of the first method of bitshifting and masking for the accesses, while maintaining the strictly defined and descriptively named accessible fields from the second method using bitfields. This is LSP autocomplete compatible because the methods are defined in the class which has been instantiated. This also has an added benefit of allowing reserved bits to be entirely inaccessible because no get or set method is generated for them if you just omit them from your arg list in the MACRO call.
+
+Like the second method, it also prevents naming conflict for fields with common names like `port_width` because it is all within a class scope.
+
+Static asserts are present to prevent instantiation of a register with accesses beyond the bounds of the underlying integer.
+
+## Weaknesses
+
+- A potential weakness of this approach is that (currently) I cannot figure out how to implement anything preventing fields from overlapping. This is really a user error, but the entire idea of this project is to prevent as much user error as possible. Maybe I will just call it a feature for supporting registers with dynamic definitions :sunglasses:.
+
+- Another weakness is that it is currently only C++ compatible. This is because it uses classes, but more importantly it is because the `__VA_OPT__` that the recursive MACRO call relies on is >= C++20.
+
+- There may be some level of memory overhead (not much runtime overhead I don't think...) in the object instantiations, but I think that is a small price to pay for a considerably more robust implementation of register support.
+
+## Planned Future Work
+
+- Add 8 bit and 64 bit register width support
+- Add priveledge defined versions which can give each field different R/W priveledges
+- Port to Rust (or at least try) 🦞
