@@ -69,6 +69,7 @@
             FOR_EACH(IMPLEMENT_REGISTER_16_SET, __VA_ARGS__);\
             uint16_t get_register_value() { return register_raw; };\
             void clear_register_value() { register_raw = 0x0; };\
+            void set_register_value(uint16_t value) { register_raw = value; };\
         private:\
             uint16_t register_raw = 0x0;\
     };
@@ -80,6 +81,8 @@
             FOR_EACH(IMPLEMENT_REGISTER_32_GET, __VA_ARGS__);\
             FOR_EACH(IMPLEMENT_REGISTER_32_SET, __VA_ARGS__);\
             uint32_t get_register_value() { return register_raw; };\
+            void clear_register_value() { register_raw = 0x0; };\
+            void set_register_value(uint32_t value) { register_raw = value; };\
         private:\
             uint32_t register_raw = 0x0;\
     };
