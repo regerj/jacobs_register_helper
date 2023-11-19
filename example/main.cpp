@@ -17,6 +17,20 @@ DECLARE_REGISTER_32(
   port_number, 24, 31
 );
 
+DECLARE_REGISTER_16_WITH_PERMS(
+    link_control_register,
+    aspm_control, 0, 1, REGISTER_PERMS::READ_WRITE,
+    root_completion_boundary, 3, 3, REGISTER_PERMS::READ,
+    link_disable, 4, 4, REGISTER_PERMS::READ_WRITE,
+    retrain_link, 5, 5, REGISTER_PERMS::READ_WRITE,
+    common_clock_configuration, 6, 6, REGISTER_PERMS::READ_WRITE,
+    extended_sync, 7, 7, REGISTER_PERMS::READ_WRITE,
+    enable_clock_power_management, 8, 8, REGISTER_PERMS::READ_WRITE,
+    hardware_autonomous_width_disable, 9, 9, REGISTER_PERMS::READ_WRITE,
+    link_bandwidth_management_interrupt_enable, 10, 10, REGISTER_PERMS::READ_WRITE,
+    link_autonomous_bandwidth_interrupt_enable, 11, 11, REGISTER_PERMS::READ_WRITE
+)
+
 int main (int argc, char *argv[]) {
     // Check setting whole register
     link_capabilites_register link_cap_reg;
@@ -33,6 +47,19 @@ int main (int argc, char *argv[]) {
     // Check individual set method
     link_cap_reg.set_max_link_speed(0xF);
     assert(link_cap_reg.get_register_value() == 0x0000'000F);
+
+    // Test writing to read only bit
+    link_control_register link_ctrl_reg;
+    assert(link_ctrl_reg.get_register_value() == 0x0);
+    // Asserting that the write returns a failure
+    assert(link_ctrl_reg.set_root_completion_boundary(1) == false);
+    // Assert that the change has not occurred anyway
+    assert(link_ctrl_reg.get_register_value() == 0x0);
+
+    // Test that you can read/write to a read_write bit field
+    assert(link_ctrl_reg.set_link_disable(1) == true);
+    assert(link_ctrl_reg.get_register_value() == 0b10000);
+    assert(link_ctrl_reg.get_link_disable() == 0b1);
 
     return 0;
 }

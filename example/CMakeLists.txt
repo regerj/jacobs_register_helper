@@ -19,5 +19,5 @@ target_sources(
 target_include_directories(
     example
     PUBLIC
-    ../
+    ../src/
 )
