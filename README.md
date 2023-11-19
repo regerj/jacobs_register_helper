@@ -158,7 +158,7 @@ My solution involves some MACRO based metaprogramming. Essentially, it provides 
 
 ```cpp
 // pcie_registers.h
-#include "registers.h" // My implementation file (to be renamed)
+#include <jacobs_register_helper.h> // My implementation file
 
 DECLARE_REGISTER_32(
   link_capabilites_register,
